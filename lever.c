@@ -19,76 +19,42 @@ typedef enum {
 } TokenType;
 
 typedef struct {
-    TokenType type;
-    char value[MAX_TOKEN_LEN];
-} Token;
-
-typedef struct {
     char *input;
-    int position;
+    char *saveptr; // Used by strtok_r to maintain state
     Token current_token;
 } Lexer;
 
 void init_lexer(Lexer *lexer, char *input) {
-    lexer->input = input;
-    lexer->position = 0;
+    lexer->input = strdup(input); // Make a copy of the input string
+    lexer->saveptr = NULL;
     lexer->current_token.type = TOKEN_EOF;
 }
 
-char peek_char(Lexer *lexer) {
-    return lexer->input[lexer->position];
-}
-
-void consume_char(Lexer *lexer) {
-    lexer->position++;
-}
-
-void skip_whitespace(Lexer *lexer) {
-    while (peek_char(lexer) == ' ' || peek_char(lexer) == '\t') {
-        consume_char(lexer);
-    }
+void cleanup_lexer(Lexer *lexer) {
+    free(lexer->input); // Free the copied input string
 }
 
 void read_word(Lexer *lexer) {
-    int i = 0;
-    while ((peek_char(lexer) >= 'a' && peek_char(lexer) <= 'z') ||
-           (peek_char(lexer) >= 'A' && peek_char(lexer) <= 'Z') ||
-           (peek_char(lexer) >= '0' && peek_char(lexer) <= '9')) {
-        lexer->current_token.value[i++] = peek_char(lexer);
-        consume_char(lexer);
+    char *token = strtok_r(NULL, " \t\n", &(lexer->saveptr));
+    if (token != NULL) {
+        strncpy(lexer->current_token.value, token, MAX_TOKEN_LEN - 1);
+        lexer->current_token.value[MAX_TOKEN_LEN - 1] = '\0';
+        lexer->current_token.type = TOKEN_WORD;
+    } else {
+        lexer->current_token.type = TOKEN_EOF;
     }
-    lexer->current_token.value[i] = '\0';
-    lexer->current_token.type = TOKEN_WORD;
-}
-
-void read_single_quote(Lexer *lexer) {
-    consume_char(lexer); // Consume the opening single quote
-    int i = 0;
-    while (peek_char(lexer) != '\'' && peek_char(lexer) != '\0') {
-        lexer->current_token.value[i++] = peek_char(lexer);
-        consume_char(lexer);
-    }
-    consume_char(lexer); // Consume the closing single quote
-    lexer->current_token.value[i] = '\0';
-    lexer->current_token.type = TOKEN_SINGLE_QUOTE;
-}
-
-void read_comment(Lexer *lexer) {
-    while (peek_char(lexer) != '\n' && peek_char(lexer) != '\0') {
-        consume_char(lexer);
-    }
-    lexer->current_token.type = TOKEN_COMMENT;
 }
 
 void next_token(Lexer *lexer) {
-    skip_whitespace(lexer);
-
-    if (peek_char(lexer) == '\0') {
-        lexer->current_token.type = TOKEN_EOF;
-        return;
+    if (lexer->saveptr == NULL) {
+        // First call, initialize strtok_r with the input string
+        lexer->saveptr = lexer->input;
     }
 
-    switch (peek_char(lexer)) {
+    switch (lexer->input[0]) {
+        case '\0':
+            lexer->current_token.type = TOKEN_EOF;
+            break;
         case ';':
             consume_char(lexer);
             lexer->current_token.type = TOKEN_SEMICOLON;
@@ -96,12 +62,6 @@ void next_token(Lexer *lexer) {
         case '\n':
             consume_char(lexer);
             lexer->current_token.type = TOKEN_NEWLINE;
-            break;
-        case '#':
-            read_comment(lexer);
-            break;
-        case '\'':
-            read_single_quote(lexer);
             break;
         default:
             read_word(lexer);
@@ -121,6 +81,8 @@ int main() {
         next_token(&lexer);
         print_token(lexer.current_token);
     } while (lexer.current_token.type != TOKEN_EOF);
+
+    cleanup_lexer(&lexer);
 
     return 0;
 }
